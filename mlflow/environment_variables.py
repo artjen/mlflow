@@ -537,6 +537,12 @@ _MLFLOW_RUN_SLOW_TESTS = _BooleanEnvironmentVariable("MLFLOW_RUN_SLOW_TESTS", Fa
 #: (default: ``11``)
 MLFLOW_DOCKER_OPENJDK_VERSION = _EnvironmentVariable("MLFLOW_DOCKER_OPENJDK_VERSION", str, "11")
 
+#: Specifies whether or not to have mlflow configure logging on import.
+#: If set to True, mlflow will configure ``mlflow.<module_name>`` loggers with
+#: logging handlers and formatters.
+#: (default: ``True``)
+MLFLOW_CONFIGURE_LOGGING = _BooleanEnvironmentVariable("MLFLOW_LOGGING_CONFIGURE_LOGGING", True)
+
 MLFLOW_UNITY_CATALOG_PRESIGNED_URLS_ENABLED = _BooleanEnvironmentVariable(
     "MLFLOW_UNITY_CATALOG_PRESIGNED_URLS_ENABLED", False
 )
