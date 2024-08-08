@@ -157,7 +157,6 @@ def _get_file_store(store_uri, **_):
 
 def _get_store_registry():
     global _model_registry_store_registry
-    from mlflow.store._unity_catalog.registry.rest_store import UcModelRegistryStore
 
     if _model_registry_store_registry is not None:
         return _model_registry_store_registry
@@ -166,7 +165,9 @@ def _get_store_registry():
     _model_registry_store_registry.register("databricks", _get_databricks_rest_store)
     # Register a placeholder function that raises if users pass a registry URI with scheme
     # "databricks-uc"
-    _model_registry_store_registry.register(_DATABRICKS_UNITY_CATALOG_SCHEME, UcModelRegistryStore)
+    from mlflow.store._unity_catalog.registry_oss.rest_store_oss import UnityCatalogOssStore
+
+    _model_registry_store_registry.register(_DATABRICKS_UNITY_CATALOG_SCHEME, UnityCatalogOssStore)
 
     for scheme in ["http", "https"]:
         _model_registry_store_registry.register(scheme, _get_rest_store)
