@@ -17,6 +17,7 @@ from mlflow.protos.databricks_pb2 import NOT_FOUND, ErrorCode
 from mlflow.store.artifact.artifact_repo import _retry_with_new_creds
 from mlflow.store.artifact.cloud_artifact_repo import CloudArtifactRepository
 from mlflow.utils.file_utils import download_file_using_http_uri
+from mlflow.utils.logging_utils import eprint
 from mlflow.utils.proto_json_utils import message_to_json
 from mlflow.utils.request_utils import augmented_raise_for_status, cloud_storage_http_request
 from mlflow.utils.rest_utils import (
@@ -81,6 +82,7 @@ class PresignedUrlArtifactRepository(CloudArtifactRepository):
         def try_func(creds):
             presigned_url = creds.signed_uri
             headers = {header.name: header.value for header in creds.headers}
+            eprint(f"Uploading {src_file_path} to {presigned_url} with headers {headers}")
             with open(src_file_path, "rb") as source_file:
                 data = source_file.read()
                 with cloud_storage_http_request(
