@@ -36,6 +36,7 @@ from mlflow.environment_variables import (
     _MLFLOW_ACTIVE_MODEL_ID,
     MLFLOW_ACTIVE_MODEL_ID,
     MLFLOW_ENABLE_ASYNC_LOGGING,
+    MLFLOW_ENABLE_SGC_RUN_RESUMPTION,
     MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING,
     MLFLOW_EXPERIMENT_ID,
     MLFLOW_EXPERIMENT_NAME,
@@ -262,6 +263,54 @@ class ActiveRun(Run):
         return exc_type is None
 
 
+def _get_sgc_run_id_for_resumption(client: "MlflowClient", experiment_id: str | None) -> str | None:
+    """
+    Retrieves the run ID for SGC (Shared GPU Cluster) run resumption.
+
+    This function checks for the GPU_COMPUTE_ASSOCIATED_RUN_ID job parameter and
+    searches for existing runs tagged with that job_run_id in experiment tags.
+    If a matching run is found, its run_id is returned for resumption.
+
+    Args:
+        client: MlflowClient instance to use for searching runs.
+        experiment_id: The experiment ID to search in. If None, uses the default experiment.
+
+    Returns:
+        str or None: The run ID to resume, or None if no matching run is found.
+    """
+    if not MLFLOW_ENABLE_SGC_RUN_RESUMPTION.get():
+        return None
+
+    from mlflow.utils.databricks_utils import get_sgc_job_run_id
+
+    # 1. Try to retrieve job_run_id from Databricks job parameters
+    job_run_id = get_sgc_job_run_id()
+
+    # 2. Determine whether a previous run is associated with this job_run_id
+    prev_run_id = None
+    if job_run_id:
+        # Determine the experiment ID to search in
+        if experiment_id:
+            search_exp_id = experiment_id
+        elif _active_experiment_id:
+            search_exp_id = _active_experiment_id
+        else:
+            # Get the default experiment ID
+            search_exp_id = _get_experiment_id()
+
+        try:
+            exp = client.get_experiment(search_exp_id)
+            # Check if experiment has the tag for this job_run_id
+            tag_key = f"job_run_id_{job_run_id}"
+            if exp.tags and tag_key in exp.tags:
+                prev_run_id = exp.tags[tag_key]
+                _logger.info(f"Resuming MLflow run: {prev_run_id} for SGC job_run_id: {job_run_id}")
+        except Exception as e:
+            _logger.debug(f"Failed to retrieve SGC run ID: {e}")
+
+    return prev_run_id
+
+
 def start_run(
     run_id: str | None = None,
     experiment_id: str | None = None,
@@ -280,6 +329,12 @@ def start_run(
     If you pass a ``run_id`` or the ``MLFLOW_RUN_ID`` environment variable is set,
     ``start_run`` attempts to resume a run with the specified run ID and
     other parameters are ignored. ``run_id`` takes precedence over ``MLFLOW_RUN_ID``.
+
+    For Shared GPU Cluster (SGC) jobs, if ``MLFLOW_ENABLE_SGC_RUN_RESUMPTION`` is enabled
+    (default: True), MLflow will automatically check for the ``GPU_COMPUTE_ASSOCIATED_RUN_ID``
+    job parameter. If found, it will search for existing runs via experiment tags with that
+    job run ID and resume them, or set experiment tags for new runs to enable future resumption.
+    This enables automatic run resumption across job retries and failures.
 
     If resuming an existing run, the run status is set to ``RunStatus.RUNNING``.
 
@@ -388,8 +443,12 @@ def start_run(
             ).format(active_run_stack[0].info.run_id)
         )
     client = MlflowClient()
+
+    # Determine which run_id to use (precedence: explicit > SGC > MLFLOW_RUN_ID env var)
     if run_id:
         existing_run_id = run_id
+    elif sgc_run_id := _get_sgc_run_id_for_resumption(client, experiment_id):
+        existing_run_id = sgc_run_id
     elif run_id := MLFLOW_RUN_ID.get():
         existing_run_id = run_id
         del os.environ[MLFLOW_RUN_ID.name]
@@ -480,6 +539,23 @@ def start_run(
             tags=resolved_tags,
             run_name=run_name,
         )
+
+        # Set experiment tag for SGC resumption if applicable
+        if MLFLOW_ENABLE_SGC_RUN_RESUMPTION.get():
+            from mlflow.utils.databricks_utils import get_sgc_job_run_id
+
+            try:
+                job_run_id = get_sgc_job_run_id()
+                if job_run_id:
+                    # Set experiment tag mapping job_run_id to this run_id
+                    tag_key = f"job_run_id_{job_run_id}"
+                    client.set_experiment_tag(exp_id_for_run, tag_key, active_run_obj.info.run_id)
+                    _logger.info(
+                        f"Set experiment tag {tag_key} = {active_run_obj.info.run_id} "
+                        f"for SGC run resumption"
+                    )
+            except Exception as e:
+                _logger.debug(f"Failed to set experiment tag for SGC resumption: {e}")
 
     if log_system_metrics is None:
         # If `log_system_metrics` is not specified, we will check environment variable.

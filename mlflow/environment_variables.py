@@ -399,6 +399,14 @@ MLFLOW_TRACKING_CLIENT_CERT_PATH = _EnvironmentVariable(
 #: (default: ``None``)
 MLFLOW_RUN_ID = _EnvironmentVariable("MLFLOW_RUN_ID", str, None)
 
+#: Enable automatic run resumption for Shared GPU Cluster (SGC) jobs.
+#: When enabled, MLflow will check for the GPU_COMPUTE_ASSOCIATED_RUN_ID job parameter
+#: and automatically resume runs associated with that job run ID.
+#: (default: ``True``)
+MLFLOW_ENABLE_SGC_RUN_RESUMPTION = _BooleanEnvironmentVariable(
+    "MLFLOW_ENABLE_SGC_RUN_RESUMPTION", True
+)
+
 #: Specifies the default root directory for tracking `FileStore`.
 #: (default: ``None``)
 MLFLOW_TRACKING_DIR = _EnvironmentVariable("MLFLOW_TRACKING_DIR", str, None)

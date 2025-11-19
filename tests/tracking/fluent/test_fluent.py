@@ -2417,3 +2417,175 @@ def test_log_metric_with_dataset_entity():
         run_data = mlflow.get_run(run.info.run_id)
         assert "precision" in run_data.data.metrics
         assert run_data.data.metrics["precision"] == 0.92
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_creates_new_run_with_tag():
+    """Test that a new run is created and tagged with job_run_id when SGC parameter is present."""
+    job_run_id = "test-job-run-123"
+
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as run:
+            run_id = run.info.run_id
+            exp_id = run.info.experiment_id
+
+        # Verify the experiment tag was set
+        exp = mlflow.get_experiment(exp_id)
+        tag_key = f"job_run_id_{job_run_id}"
+        assert tag_key in exp.tags
+        assert exp.tags[tag_key] == run_id
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_resumes_existing_run():
+    """Test that an existing run is resumed when matching job_run_id is found."""
+    job_run_id = "test-job-run-456"
+
+    # Create first run and tag it
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as first_run:
+            first_run_id = first_run.info.run_id
+            mlflow.log_param("param1", "value1")
+
+    # Start another run with same job_run_id - should resume the first run
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as resumed_run:
+            resumed_run_id = resumed_run.info.run_id
+            mlflow.log_param("param2", "value2")
+
+    # Verify same run was resumed
+    assert resumed_run_id == first_run_id
+
+    # Verify both params exist
+    run_data = mlflow.get_run(first_run_id)
+    assert run_data.data.params["param1"] == "value1"
+    assert run_data.data.params["param2"] == "value2"
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_disabled_by_env_var():
+    """Test that SGC resumption does not happen when disabled via environment variable."""
+    job_run_id = "test-job-run-789"
+
+    # Create first run with SGC enabled
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as first_run:
+            first_run_id = first_run.info.run_id
+
+    # Try to start another run with SGC disabled - should create a new run
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "false"}),
+    ):
+        with mlflow.start_run() as second_run:
+            second_run_id = second_run.info.run_id
+
+    # Verify a new run was created (not resumed)
+    assert second_run_id != first_run_id
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_no_job_parameter():
+    """Test that normal run creation works when no SGC job parameter is present."""
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=None),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as run:
+            exp_id = run.info.experiment_id
+
+        # Verify the run was created and no experiment tags with job_run_id prefix
+        exp = mlflow.get_experiment(exp_id)
+        job_run_id_tags = [k for k in exp.tags.keys() if k.startswith("job_run_id_")]
+        assert len(job_run_id_tags) == 0
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_explicit_run_id_takes_precedence():
+    """Test that explicit run_id parameter takes precedence over SGC resumption."""
+    job_run_id = "test-job-run-precedence"
+
+    # Create first run
+    with mlflow.start_run() as first_run:
+        first_run_id = first_run.info.run_id
+
+    # Create second run with SGC enabled
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run() as second_run:
+            second_run_id = second_run.info.run_id
+
+    # Start run with explicit run_id - should use that, not SGC
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run(run_id=first_run_id) as resumed_run:
+            resumed_run_id = resumed_run.info.run_id
+
+    # Verify first run was resumed (not second run via SGC)
+    assert resumed_run_id == first_run_id
+    assert resumed_run_id != second_run_id
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_handles_exceptions_gracefully():
+    """Test that SGC resumption handles exceptions gracefully and creates new run."""
+    job_run_id = "test-job-run-exception"
+
+    # Mock search_runs to raise an exception
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+        mock.patch.object(MlflowClient, "search_runs", side_effect=Exception("Search failed")),
+    ):
+        # Should still create a new run despite exception
+        with mlflow.start_run() as run:
+            run_id = run.info.run_id
+
+        # Verify the run was created
+        run_data = mlflow.get_run(run_id)
+        assert run_data.info.run_id == run_id
+
+
+@pytest.mark.usefixtures(empty_active_run_stack.__name__)
+def test_sgc_run_resumption_different_experiments():
+    """Test that SGC resumption only finds runs in the same experiment."""
+    job_run_id = "test-job-run-exp"
+
+    # Create run in first experiment
+    exp1 = mlflow.create_experiment(f"exp1_{uuid.uuid4()}")
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run(experiment_id=exp1) as run1:
+            run1_id = run1.info.run_id
+
+    # Create run in second experiment with same job_run_id - should create new run
+    exp2 = mlflow.create_experiment(f"exp2_{uuid.uuid4()}")
+    with (
+        mock.patch("mlflow.utils.databricks_utils.get_sgc_job_run_id", return_value=job_run_id),
+        mock.patch.dict(os.environ, {"MLFLOW_ENABLE_SGC_RUN_RESUMPTION": "true"}),
+    ):
+        with mlflow.start_run(experiment_id=exp2) as run2:
+            run2_id = run2.info.run_id
+
+    # Verify different runs were created
+    assert run1_id != run2_id
+    assert mlflow.get_run(run1_id).info.experiment_id == exp1
+    assert mlflow.get_run(run2_id).info.experiment_id == exp2

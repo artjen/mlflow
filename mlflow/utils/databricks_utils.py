@@ -537,6 +537,29 @@ def get_job_type():
         return _get_context_tag("jobTaskType")
 
 
+def get_sgc_job_run_id():
+    """
+    Retrieves the GPU_COMPUTE_ASSOCIATED_RUN_ID job parameter from Databricks job task values.
+
+    This function attempts to get the job parameter used for Shared GPU Cluster (SGC)
+    run resumption. It returns None if not running in a Databricks job context or if
+    the parameter is not set.
+
+    Returns:
+        str or None: The SGC job run ID if available, None otherwise.
+    """
+    try:
+        from pyspark.dbutils import DBUtils
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession.builder.getOrCreate()
+        dbutils = DBUtils(spark)
+        return dbutils.jobs.taskValues.get("GPU_COMPUTE_ASSOCIATED_RUN_ID", debugValue=None)
+    except Exception:
+        # Not in Databricks context or parameter not set
+        return None
+
+
 @_use_repl_context_if_available("jobType")
 def get_job_type_info():
     try:
