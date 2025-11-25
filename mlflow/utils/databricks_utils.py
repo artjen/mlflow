@@ -1066,9 +1066,11 @@ def get_sgc_job_run_id() -> str | None:
         return None
 
     try:
-        return dbutils.jobs.taskValues.get(
+        job_run_id = dbutils.jobs.taskValues.get(
             key="SERVERLESS_GPU_COMPUTE_ASSOCIATED_JOB_RUN_ID", debugValue=None
         )
+        _logger.debug(f"SGC job run ID: {job_run_id}")
+        return job_run_id
     except (AttributeError, KeyError, TypeError) as e:
         _logger.debug(f"Failed to retrieve SGC job run ID from task values: {e}", exc_info=True)
         return None
