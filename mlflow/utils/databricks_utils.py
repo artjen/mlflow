@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, NamedTuple, ParamSpec, TypeVar
 
+from py4j.protocol import Py4JJavaError
+
 from mlflow.utils.logging_utils import eprint
 from mlflow.utils.request_utils import augmented_raise_for_status
 
@@ -1066,12 +1068,11 @@ def get_sgc_job_run_id() -> str | None:
         return None
 
     try:
-        job_run_id = dbutils.jobs.taskValues.get(
-            key="SERVERLESS_GPU_COMPUTE_ASSOCIATED_JOB_RUN_ID", debugValue=None
-        )
+        job_run_id = dbutils.widgets.get("SERVERLESS_GPU_COMPUTE_ASSOCIATED_JOB_RUN_ID")
         _logger.debug(f"SGC job run ID: {job_run_id}")
         return job_run_id
-    except (AttributeError, KeyError, TypeError) as e:
+    # dbutils.widgets.get can raise Py4JJavaError or ValueError
+    except (Py4JJavaError, ValueError) as e:
         _logger.debug(f"Failed to retrieve SGC job run ID from task values: {e}", exc_info=True)
         return None
 
