@@ -1061,16 +1061,19 @@ def get_sgc_job_run_id() -> str | None:
         non-Databricks environments or when the task value is not set.
     """
     try:
+        _logger.info("Getting DBUtils")
         dbutils = _get_dbutils()
     except _NoDbutilsError:
+        _logger.info("No DBUtils found")
         return None
 
     try:
+        _logger.info("Getting SGC job run ID")
         job_run_id = dbutils.widgets.get("SERVERLESS_GPU_COMPUTE_ASSOCIATED_JOB_RUN_ID")
-        _logger.debug(f"SGC job run ID: {job_run_id}")
+        _logger.info(f"SGC job run ID: {job_run_id}")
         return job_run_id
     except Exception as e:
-        _logger.debug(f"Failed to retrieve SGC job run ID from task values: {e}", exc_info=True)
+        _logger.info(f"Failed to retrieve SGC job run ID from task values: {e}", exc_info=True)
         return None
 
 

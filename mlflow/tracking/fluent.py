@@ -275,9 +275,10 @@ def _get_sgc_job_run_id_tag_key() -> str | None:
     if not _MLFLOW_ENABLE_SGC_RUN_RESUMPTION_FOR_DATABRICKS_JOBS.get():
         return None
 
+    _logger.info("Getting SGC job run ID tag key")
     if sgc_job_run_id := get_sgc_job_run_id():
         return f"{MLFLOW_DATABRICKS_SGC_RESUME_RUN_JOB_RUN_ID_PREFIX}.{sgc_job_run_id}"
-
+    _logger.info("No SGC job run ID tag key found")
     return None
 
 
@@ -452,9 +453,11 @@ def start_run(
         del os.environ[MLFLOW_RUN_ID.name]
     # Get SGC job run ID tag key for run resumption if applicable
     elif sgc_job_run_id_tag_key := _get_sgc_job_run_id_tag_key():
+        _logger.info(f"SGC job run ID tag key found: {sgc_job_run_id_tag_key}")
         existing_run_id = _get_sgc_mlflow_run_id_for_resumption(
             client, experiment_id, sgc_job_run_id_tag_key
         )
+        _logger.info(f"Existing run ID: {existing_run_id}")
     else:
         existing_run_id = None
     if existing_run_id:
@@ -547,6 +550,9 @@ def start_run(
         # SGC job_run_id to this run_id for future run resumption
         if sgc_job_run_id_tag_key:
             try:
+                _logger.info(
+                    f"Setting experiment tag {sgc_job_run_id_tag_key} = {active_run_obj.info.run_id} for SGC run resumption"
+                )
                 client.set_experiment_tag(
                     exp_id_for_run, sgc_job_run_id_tag_key, active_run_obj.info.run_id
                 )
@@ -555,9 +561,7 @@ def start_run(
                     f"for SGC run resumption"
                 )
             except Exception as e:
-                _logger.debug(
-                    f"Failed to set experiment tag for SGC resumption: {e}", exc_info=True
-                )
+                _logger.info(f"Failed to set experiment tag for SGC resumption: {e}", exc_info=True)
 
     if log_system_metrics is None:
         # If `log_system_metrics` is not specified, we will check environment variable.
