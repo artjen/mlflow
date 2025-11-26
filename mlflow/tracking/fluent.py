@@ -272,11 +272,14 @@ def _get_sgc_job_run_id_tag_key() -> str | None:
     Returns:
         str or None: The experiment tag key for SGC resumption, or None if not applicable.
     """
+    _logger.info("Getting SGC job run ID tag key")
     if not _MLFLOW_ENABLE_SGC_RUN_RESUMPTION_FOR_DATABRICKS_JOBS.get():
+        _logger.info("SGC run resumption is not enabled")
         return None
 
-    _logger.info("Getting SGC job run ID tag key")
+    _logger.info("Getting SGC job run ID")
     if sgc_job_run_id := get_sgc_job_run_id():
+        _logger.info(f"SGC job run ID: {sgc_job_run_id}")
         return f"{MLFLOW_DATABRICKS_SGC_RESUME_RUN_JOB_RUN_ID_PREFIX}.{sgc_job_run_id}"
     _logger.info("No SGC job run ID tag key found")
     return None
@@ -445,6 +448,7 @@ def start_run(
             ).format(active_run_stack[0].info.run_id)
         )
     client = MlflowClient()
+    _logger.info("aj Starting run")
     sgc_job_run_id_tag_key: str | None = None
     if run_id:
         existing_run_id = run_id
