@@ -268,6 +268,7 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
             # Upload trace data synchronously to avoid ThreadPoolExecutor deadlock during Python
             # interpreter shutdown, which causes "cannot schedule new futures after shutdown" error.
             if cred.type == ArtifactCredentialType.AZURE_ADLS_GEN2_SAS_URI:
+                _logger.info("Uploading trace data to Azure ADLS Gen2")
                 self._azure_adls_gen2_upload_file(
                     credentials=cred,
                     local_file=temp_file,
@@ -277,6 +278,7 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
                     ],
                     is_sync=True,
                 )
+                _logger.info("Trace data uploaded to Azure ADLS Gen2")
             elif cred.type == ArtifactCredentialType.AZURE_SAS_URI:
                 self._azure_upload_file(
                     credentials=cred,
@@ -484,6 +486,9 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
         """
         try:
             headers = self._extract_headers_from_credentials(credentials.headers)
+            _logger.info(
+                "Uploading trace data to Azure ADLS Gen2 using headers: %s", headers
+            )
 
             # try to create the file
             self._retryable_adls_function(
