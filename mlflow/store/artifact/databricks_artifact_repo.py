@@ -264,6 +264,7 @@ class DatabricksArtifactRepository(CloudArtifactRepository):
 
     def upload_trace_data(self, trace_data: str) -> None:
         cred = self._get_upload_trace_data_cred_info()
+        _logger.info("Uploading trace data to %s", cred.type)
         with write_local_temp_trace_data_file(trace_data) as temp_file:
             # Upload trace data synchronously to avoid ThreadPoolExecutor deadlock during Python
             # interpreter shutdown, which causes "cannot schedule new futures after shutdown" error.
